@@ -2,6 +2,7 @@ name: Publish Python bindings
 
 on:
   workflow_call:
+  push:
 
 concurrency:
   group: publish-python
@@ -11,188 +12,62 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  tag:
-    name: tag the version
-    runs-on: ubuntu-latest
-    needs:
-      - should-publish
-      - macos
-      - windows
-      - linux
-      # - musllinux
-    if: needs.should-publish.outputs.is_new_version == 'yes' && github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-      - name: Tag the version
-        run: |
-          set -euxo pipefail
-          export CURRENT_VERSION="$(.github/workflows/get_current_crate_version.sh trustfall)"
-          git tag "pytrustfall-v$CURRENT_VERSION"
-          git push origin "pytrustfall-v$CURRENT_VERSION"
-
-  publish:
-    name: publish python trustfall
-    runs-on: ubuntu-latest
-    needs:
-      - should-publish
-      - tag
-      - macos
-      - windows
-      - linux
-      # - musllinux
-    if: needs.should-publish.outputs.is_new_version == 'yes' && github.ref == 'refs/heads/main'
-    permissions:
-      # This permission is used for trusted publishing:
-      # https://blog.pypi.org/posts/2023-04-20-introducing-trusted-publishers/
-      #
-      # Trusted publishing is configured on PyPI for the `trustfall` Python package.
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: wheels-*
-          path: dist
-          merge-multiple: true
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          verbose: true
-          print-hash: true
-
-  macos:
-    # actions/setup-python with Python <3.11 does not work with macos-latest
-    runs-on: macos-13
-    needs:
-      - should-publish
-    if: needs.should-publish.outputs.is_new_version == 'yes'
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          architecture: x64
-      - name: Install rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-      - name: Show python version
-        run: |
-          python --version
-      - name: Build wheels - x86_64
-        uses: messense/maturin-action@v1
-        with:
-          # version pinned until https://github.com/PyO3/maturin/issues/2154 is fixed
-          maturin-version: v1.6.0
-          target: x86_64
-          args: --release --interpreter python --out dist --sdist -m pytrustfall/Cargo.toml
-      - name: Install built wheel - x86_64
-        run: |
-          pip install trustfall --no-index --find-links dist --force-reinstall
-          python -c "import trustfall"
-      - name: Build wheels - universal2
-        uses: messense/maturin-action@v1
-        with:
-          target: universal2
-          args: --release --interpreter python --out dist -m pytrustfall/Cargo.toml
-      - name: Install built wheel - universal2
-        run: |
-          pip install trustfall --no-index --find-links dist --force-reinstall
-          python -c "import trustfall"
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-macos-${{ matrix.python-version }}
-          path: dist/*.whl
-
-  windows:
-    runs-on: windows-latest
-    needs:
-      - should-publish
-    if: needs.should-publish.outputs.is_new_version == 'yes'
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          architecture: x64
-      - name: Install rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-      - name: Show python version
-        run: |
-          python --version
-      - name: Build wheels
-        uses: messense/maturin-action@v1
-        with:
-          target: x64
-          args: --release --interpreter python --out dist -m pytrustfall/Cargo.toml
-      - name: Install built wheel
-        run: |
-          pip install trustfall --no-index --find-links dist --force-reinstall
-          python -c "import trustfall"
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-windows-${{ matrix.python-version }}
-          path: dist/*.whl
-
-  linux:
-    runs-on: ubuntu-latest
-    needs:
-      - should-publish
-    if: needs.should-publish.outputs.is_new_version == 'yes'
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          architecture: x64
-      - name: Install rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-      - name: Show python version
-        run: |
-          python3 --version
-      - name: Build wheels
-        uses: messense/maturin-action@v1
-        with:
-          target: x86_64
-          manylinux: auto
-          args: --release --interpreter python${{ matrix.python-version}} --out dist -m pytrustfall/Cargo.toml
-      - name: Install built wheel
-        run: |
-          pip install trustfall --no-index --find-links dist --force-reinstall
-          python -c "import trustfall"
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-linux-${{ matrix.python-version }}
-          path: dist/*.whl
-
-  # musllinux:
+  # tag:
+  #   name: tag the version
   #   runs-on: ubuntu-latest
-    # needs:
-    #   - should-publish
-    # if: needs.should-publish.outputs.is_new_version == 'yes'
+  #   needs:
+  #     - should-publish
+  #     - macos
+  #     - windows
+  #     - linux
+  #     # - musllinux
+  #   if: needs.should-publish.outputs.is_new_version == 'yes' && github.ref == 'refs/heads/main'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         persist-credentials: true
+  #     - name: Tag the version
+  #       run: |
+  #         set -euxo pipefail
+  #         export CURRENT_VERSION="$(.github/workflows/get_current_crate_version.sh trustfall)"
+  #         git tag "pytrustfall-v$CURRENT_VERSION"
+  #         git push origin "pytrustfall-v$CURRENT_VERSION"
+
+  # publish:
+  #   name: publish python trustfall
+  #   runs-on: ubuntu-latest
+  #   needs:
+  #     - should-publish
+  #     - tag
+  #     - macos
+  #     - windows
+  #     - linux
+  #     # - musllinux
+  #   if: needs.should-publish.outputs.is_new_version == 'yes' && github.ref == 'refs/heads/main'
+  #   permissions:
+  #     # This permission is used for trusted publishing:
+  #     # https://blog.pypi.org/posts/2023-04-20-introducing-trusted-publishers/
+  #     #
+  #     # Trusted publishing is configured on PyPI for the `trustfall` Python package.
+  #     id-token: write
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         pattern: wheels-*
+  #         path: dist
+  #         merge-multiple: true
+  #     - name: Publish package distributions to PyPI
+  #       uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         verbose: true
+  #         print-hash: true
+
+  # macos:
+  #   # actions/setup-python with Python <3.11 does not work with macos-latest
+  #   runs-on: macos-13
+  #   needs:
+  #     - should-publish
+  #   if: needs.should-publish.outputs.is_new_version == 'yes'
   #   strategy:
   #     matrix:
   #       python-version: ["3.9", "3.10", "3.11", "3.12"]
@@ -204,54 +79,180 @@ jobs:
   #       with:
   #         python-version: ${{ matrix.python-version }}
   #         architecture: x64
+  #     - name: Install rust
+  #       uses: actions-rust-lang/setup-rust-toolchain@v1
+  #       with:
+  #         cache: false
+  #     - name: Show python version
+  #       run: |
+  #         python --version
+  #     - name: Build wheels - x86_64
+  #       uses: messense/maturin-action@v1
+  #       with:
+  #         # version pinned until https://github.com/PyO3/maturin/issues/2154 is fixed
+  #         maturin-version: v1.6.0
+  #         target: x86_64
+  #         args: --release --interpreter python --out dist --sdist -m pytrustfall/Cargo.toml
+  #     - name: Install built wheel - x86_64
+  #       run: |
+  #         pip install trustfall --no-index --find-links dist --force-reinstall
+  #         python -c "import trustfall"
+  #     - name: Build wheels - universal2
+  #       uses: messense/maturin-action@v1
+  #       with:
+  #         target: universal2
+  #         args: --release --interpreter python --out dist -m pytrustfall/Cargo.toml
+  #     - name: Install built wheel - universal2
+  #       run: |
+  #         pip install trustfall --no-index --find-links dist --force-reinstall
+  #         python -c "import trustfall"
+  #     - name: Upload wheels
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: wheels-macos-${{ matrix.python-version }}
+  #         path: dist/*.whl
+
+  # windows:
+  #   runs-on: windows-latest
+  #   needs:
+  #     - should-publish
+  #   if: needs.should-publish.outputs.is_new_version == 'yes'
+  #   strategy:
+  #     matrix:
+  #       python-version: ["3.9", "3.10", "3.11", "3.12"]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         persist-credentials: false
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ matrix.python-version }}
+  #         architecture: x64
+  #     - name: Install rust
+  #       uses: actions-rust-lang/setup-rust-toolchain@v1
+  #       with:
+  #         cache: false
+  #     - name: Show python version
+  #       run: |
+  #         python --version
+  #     - name: Build wheels
+  #       uses: messense/maturin-action@v1
+  #       with:
+  #         target: x64
+  #         args: --release --interpreter python --out dist -m pytrustfall/Cargo.toml
+  #     - name: Install built wheel
+  #       run: |
+  #         pip install trustfall --no-index --find-links dist --force-reinstall
+  #         python -c "import trustfall"
+  #     - name: Upload wheels
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: wheels-windows-${{ matrix.python-version }}
+  #         path: dist/*.whl
+
+  # linux:
+  #   runs-on: ubuntu-latest
+  #   needs:
+  #     - should-publish
+  #   if: needs.should-publish.outputs.is_new_version == 'yes'
+  #   strategy:
+  #     matrix:
+  #       python-version: ["3.9", "3.10", "3.11", "3.12"]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         persist-credentials: false
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ matrix.python-version }}
+  #         architecture: x64
+  #     - name: Install rust
+  #       uses: actions-rust-lang/setup-rust-toolchain@v1
+  #       with:
+  #         cache: false
   #     - name: Show python version
   #       run: |
   #         python3 --version
   #     - name: Build wheels
   #       uses: messense/maturin-action@v1
   #       with:
-  #         target: x86_64-unknown-linux-musl
-  #         manylinux: musllinux_1_2
-  #         args: --release --interpreter python${{ matrix.python-version}} --out /io/dist -m pytrustfall/Cargo.toml
+  #         target: x86_64
+  #         manylinux: auto
+  #         args: --release --interpreter python${{ matrix.python-version}} --out dist -m pytrustfall/Cargo.toml
   #     - name: Install built wheel
-  #       uses: addnab/docker-run-action@v3
-  #       with:
-  #         image: alpine:latest
-  #         options: -v ${{ github.workspace }}:/io -w /io
-  #         run: |
-  #           apk add py3-pip
-  #           pip3 install -U pip
-  #           ls -alh /io/dist/
-  #           pip3 install trustfall --no-index --find-links /io/dist/ --force-reinstall
-  #           python3 -c "import trustfall"
+  #       run: |
+  #         pip install trustfall --no-index --find-links dist --force-reinstall
+  #         python -c "import trustfall"
   #     - name: Upload wheels
   #       uses: actions/upload-artifact@v4
   #       with:
-  #         name: wheels-musllinux-${{ matrix.python-version }}
-  #         path: /io/dist/*.whl
+  #         name: wheels-linux-${{ matrix.python-version }}
+  #         path: dist/*.whl
 
-  should-publish:
-    name: Did version change
+  musllinux:
     runs-on: ubuntu-latest
-    outputs:
-      is_new_version: "${{ steps.check.outputs.is_new_version }}"
+    # needs:
+    #   - should-publish
+    # if: needs.should-publish.outputs.is_new_version == 'yes'
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-
-      - id: check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: x64
+      - name: Show python version
         run: |
-          set +e
-          .github/workflows/is_py_package_version_already_uploaded.sh pytrustfall trustfall
-          export EXIT_CODE="$?"
-          set -e
-          if [[ "$EXIT_CODE" == "7" ]]; then
-            echo 'is_new_version=no' >> $GITHUB_OUTPUT
-          elif [[ "$EXIT_CODE" == "0" ]]; then
-            echo 'is_new_version=yes' >> $GITHUB_OUTPUT
-          else
-            # Unexpected outcome, indicates a bug.
-            exit "$EXIT_CODE"
-          fi
+          python3 --version
+      - name: Build wheels
+        uses: messense/maturin-action@v1
+        with:
+          target: x86_64-unknown-linux-musl
+          manylinux: musllinux_1_2
+          args: --release --interpreter python${{ matrix.python-version}} --out /io/dist -m pytrustfall/Cargo.toml
+      - name: Install built wheel
+        uses: addnab/docker-run-action@v3
+        with:
+          image: alpine:latest
+          options: -v ${{ github.workspace }}:/io -w /io
+          run: |
+            apk add py3-pip
+            pip3 install -U pip
+            ls -alh /io/dist/
+            pip3 install trustfall --no-index --find-links /io/dist/ --force-reinstall
+            python3 -c "import trustfall"
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-musllinux-${{ matrix.python-version }}
+          path: /io/dist/*.whl
+
+  # should-publish:
+  #   name: Did version change
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     is_new_version: "${{ steps.check.outputs.is_new_version }}"
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         persist-credentials: false
+
+  #     - id: check
+  #       run: |
+  #         set +e
+  #         .github/workflows/is_py_package_version_already_uploaded.sh pytrustfall trustfall
+  #         export EXIT_CODE="$?"
+  #         set -e
+  #         if [[ "$EXIT_CODE" == "7" ]]; then
+  #           echo 'is_new_version=no' >> $GITHUB_OUTPUT
+  #         elif [[ "$EXIT_CODE" == "0" ]]; then
+  #           echo 'is_new_version=yes' >> $GITHUB_OUTPUT
+  #         else
+  #           # Unexpected outcome, indicates a bug.
+  #           exit "$EXIT_CODE"
+  #         fi
